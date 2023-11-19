@@ -64,6 +64,8 @@ const (
 	stepWhereOperator
 	stepWhereValue
 	stepWhereAnd
+	stepCreateTable
+	stepParseCreateFields //()
 )
 
 type parser struct {
@@ -92,7 +94,8 @@ func (p *parser) doParse() (query.Query, error) {
 		}
 		switch p.step {
 		case stepType:
-			switch strings.ToUpper(p.peek()) {
+			QType := strings.ToUpper(p.peek())
+			switch QType {
 			case "SELECT":
 				p.query.Type = query.Select
 				p.pop()
@@ -110,8 +113,47 @@ func (p *parser) doParse() (query.Query, error) {
 				p.query.Type = query.Delete
 				p.pop()
 				p.step = stepDeleteFromTable
+			case "CREATE TABLE":
+				p.query.Type = query.Create
+				p.pop()
+				p.step = stepCreateTable
+				p.query.CreateFields = map[string]string{}
 			default:
 				return p.query, fmt.Errorf("invalid query type")
+			}
+		case stepCreateTable:
+			tableName := p.peek()
+			if tableName == "" {
+				return p.query, fmt.Errorf("missing table name")
+			}
+			p.query.TableName = tableName
+			p.pop()
+			leftBracket := p.peek() // (
+			if leftBracket != "(" {
+				return p.query, fmt.Errorf("syntax error, expect '(")
+			}
+			p.step = stepParseCreateFields
+			p.pop()
+		case stepParseCreateFields:
+			field := p.peek()
+			if field == "" {
+				return p.query, fmt.Errorf("syntax error, expect filed name")
+			}
+			p.pop()
+			Type := p.peek()
+			if Type == "" {
+				return p.query, fmt.Errorf("syntax error, expect filed type")
+			}
+			p.pop()
+			p.query.CreateFields[field] = Type
+			NToken := p.peek()
+			if NToken == "," {
+				p.pop()
+				p.step = stepParseCreateFields
+			} else if NToken == ")" {
+				p.pop()
+			} else {
+				return p.query, fmt.Errorf("syntax error, expect ')'")
 			}
 		case stepSelectField:
 			identifier := p.peek()
@@ -383,7 +425,7 @@ func (p *parser) popWhitespace() {
 
 var reservedWords = []string{
 	"(", ")", ">=", "<=", "!=", ",", "=", ">", "<", "SELECT", "INSERT INTO", "VALUES", "UPDATE", "DELETE FROM",
-	"WHERE", "FROM", "SET", "AS",
+	"WHERE", "FROM", "SET", "AS", "CREATE TABLE",
 }
 
 func (p *parser) peekWithLength() (string, int) {
@@ -429,6 +471,9 @@ func (p *parser) validate() error {
 	}
 	if p.query.Type == query.UnknownType {
 		return fmt.Errorf("query type cannot be empty")
+	}
+	if p.query.Type == query.Create {
+		return nil
 	}
 	if p.query.TableName == "" {
 		return fmt.Errorf("table name cannot be empty")

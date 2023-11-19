@@ -479,6 +479,22 @@ query.Query {
 }
 ```
 
+### Example: CREATE TABLE
+
+```
+query, err := sqlparser.Parse(`CREATE TABLE test (name string, age number, gender bool)`)
+
+query.Query {
+	Type: Create
+	TableName: test
+	Conditions: []
+	Updates: map[]
+	Inserts: []
+	Fields: []
+	Aliases: map[]
+}
+```
+
 
 
 ### Example: empty query fails

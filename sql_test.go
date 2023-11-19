@@ -2,7 +2,6 @@ package sqlparser
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"testing"
@@ -436,6 +435,20 @@ func TestSQL(t *testing.T) {
 			},
 			Err: nil,
 		},
+		{
+			Name: "CREATE TABLE",
+			SQL:  "CREATE TABLE test (name string, age number, gender bool)",
+			Expected: query.Query{
+				Type:      query.Create,
+				TableName: "test",
+				CreateFields: map[string]string{
+					"name":   "string",
+					"age":    "number",
+					"gender": "bool",
+				},
+			},
+			Err: nil,
+		},
 	}
 
 	output := output{Types: query.TypeString, Operators: query.OperatorString}
@@ -465,7 +478,7 @@ func TestSQL(t *testing.T) {
 }
 
 func createReadme(out output) {
-	content, err := ioutil.ReadFile("README.template")
+	content, err := os.ReadFile("README.template")
 	if err != nil {
 		log.Fatal(err)
 	}

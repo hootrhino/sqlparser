@@ -2,13 +2,14 @@ package query
 
 // Query represents a parsed query
 type Query struct {
-	Type       Type
-	TableName  string
-	Conditions []Condition
-	Updates    map[string]string
-	Inserts    [][]string
-	Fields     []string // Used for SELECT (i.e. SELECTed field names) and INSERT (INSERTEDed field names)
-	Aliases    map[string]string
+	Type         Type
+	TableName    string
+	Conditions   []Condition
+	Updates      map[string]string
+	Inserts      [][]string
+	Fields       []string // Used for SELECT (i.e. SELECTed field names) and INSERT (INSERTEDed field names)
+	Aliases      map[string]string
+	CreateFields map[string]string // name1 type, name2 type ...
 }
 
 // Type is the type of SQL query, e.g. SELECT/UPDATE
@@ -25,6 +26,8 @@ const (
 	Insert
 	// Delete represents a DELETE query
 	Delete
+	// Create
+	Create
 )
 
 // TypeString is a string slice with the names of all types in order
@@ -34,6 +37,7 @@ var TypeString = []string{
 	"Update",
 	"Insert",
 	"Delete",
+	"Create",
 }
 
 // Operator is between operands in a condition
