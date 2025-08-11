@@ -462,7 +462,7 @@ func TestSQL(t *testing.T) {
 				t.Errorf("Error should have been nil but was %v", err)
 			}
 			if tc.Err != nil && err != nil {
-				require.Equal(t, tc.Err, err, "Unexpected error")
+				require.Equal(t, tc.Err.Error(), err.Error(), "Unexpected error")
 			}
 			if len(actual) > 0 {
 				require.Equal(t, tc.Expected, actual[0], "Query didn't match expectation")
@@ -489,5 +489,369 @@ func createReadme(out output) {
 	}
 	if err := t.Execute(f, out); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// Test LIKE and IN operators
+func TestParseLikeAndInOperators(t *testing.T) {
+	tests := []struct {
+		name     string
+		sql      string
+		expected query.Query
+		hasError bool
+	}{
+		{
+			name: "SELECT with LIKE operator",
+			sql:  "SELECT name FROM users WHERE name LIKE 'John%'",
+			expected: query.Query{
+				Type:      query.Select,
+				TableName: "users",
+				Fields:    []string{"name"},
+				Conditions: []query.Condition{
+					{
+						Operand1:        "name",
+						Operand1IsField: true,
+						Operator:        query.Like,
+						Operand2:        "John%",
+						Operand2IsField: false,
+					},
+				},
+			},
+			hasError: false,
+		},
+		{
+			name: "SELECT with NOT LIKE operator",
+			sql:  "SELECT * FROM products WHERE name NOT LIKE '%test%'",
+			expected: query.Query{
+				Type:      query.Select,
+				TableName: "products",
+				Fields:    []string{"*"},
+				Conditions: []query.Condition{
+					{
+						Operand1:        "name",
+						Operand1IsField: true,
+						Operator:        query.NotLike,
+						Operand2:        "%test%",
+						Operand2IsField: false,
+					},
+				},
+			},
+			hasError: false,
+		},
+		{
+			name: "DELETE with LIKE operator",
+			sql:  "DELETE FROM logs WHERE message LIKE 'Error:%'",
+			expected: query.Query{
+				Type:      query.Delete,
+				TableName: "logs",
+				Conditions: []query.Condition{
+					{
+						Operand1:        "message",
+						Operand1IsField: true,
+						Operator:        query.Like,
+						Operand2:        "Error:%",
+						Operand2IsField: false,
+					},
+				},
+			},
+			hasError: false,
+		},
+		{
+			name: "UPDATE with LIKE operator",
+			sql:  "UPDATE products SET price = '99' WHERE name LIKE 'Pro%'",
+			expected: query.Query{
+				Type:      query.Update,
+				TableName: "products",
+				Updates:   map[string]string{"price": "99"},
+				Conditions: []query.Condition{
+					{
+						Operand1:        "name",
+						Operand1IsField: true,
+						Operator:        query.Like,
+						Operand2:        "Pro%",
+						Operand2IsField: false,
+					},
+				},
+			},
+			hasError: false,
+		},
+		{
+			name: "SELECT with IN operator",
+			sql:  "SELECT name FROM users WHERE id IN ('1', '2', '3')",
+			expected: query.Query{
+				Type:      query.Select,
+				TableName: "users",
+				Fields:    []string{"name"},
+				Conditions: []query.Condition{
+					{
+						Operand1:        "id",
+						Operand1IsField: true,
+						Operator:        query.In,
+						InValues:        []string{"1", "2", "3"},
+					},
+				},
+			},
+			hasError: false,
+		},
+		{
+			name: "SELECT with NOT IN operator",
+			sql:  "SELECT * FROM products WHERE status NOT IN ('sold', 'discontinued')",
+			expected: query.Query{
+				Type:      query.Select,
+				TableName: "products",
+				Fields:    []string{"*"},
+				Conditions: []query.Condition{
+					{
+						Operand1:        "status",
+						Operand1IsField: true,
+						Operator:        query.NotIn,
+						InValues:        []string{"sold", "discontinued"},
+					},
+				},
+			},
+			hasError: false,
+		},
+		{
+			name: "DELETE with IN operator",
+			sql:  "DELETE FROM logs WHERE level IN ('INFO', 'DEBUG')",
+			expected: query.Query{
+				Type:      query.Delete,
+				TableName: "logs",
+				Conditions: []query.Condition{
+					{
+						Operand1:        "level",
+						Operand1IsField: true,
+						Operator:        query.In,
+						InValues:        []string{"INFO", "DEBUG"},
+					},
+				},
+			},
+			hasError: false,
+		},
+		{
+			name: "UPDATE with IN operator",
+			sql:  "UPDATE users SET active = 'false' WHERE id IN ('10', '20')",
+			expected: query.Query{
+				Type:      query.Update,
+				TableName: "users",
+				Updates:   map[string]string{"active": "false"},
+				Conditions: []query.Condition{
+					{
+						Operand1:        "id",
+						Operand1IsField: true,
+						Operator:        query.In,
+						InValues:        []string{"10", "20"},
+					},
+				},
+			},
+			hasError: false,
+		},
+		{
+			name:     "IN operator with empty values fails",
+			sql:      "SELECT * FROM users WHERE id IN ()",
+			expected: query.Query{},
+			hasError: true,
+		},
+		{
+			name:     "IN operator with incomplete values fails",
+			sql:      "SELECT * FROM users WHERE id IN ('1', '2'",
+			expected: query.Query{},
+			hasError: true,
+		},
+		{
+			name:     "LIKE operator with incomplete value fails",
+			sql:      "SELECT * FROM users WHERE name LIKE 'John",
+			expected: query.Query{},
+			hasError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := Parse(tt.sql)
+
+			if tt.hasError {
+				require.Error(t, err, "Expected an error but got none")
+			} else {
+				require.NoError(t, err, "Unexpected error")
+				require.Equal(t, tt.expected, result, "Query didn't match expectation")
+			}
+		})
+	}
+}
+
+// Test LIKE and IN operators
+func Test_IN_operator_without_opening_parenthesis_fails(t *testing.T) {
+	tests := []struct {
+		name     string
+		sql      string
+		expected query.Query
+		hasError bool
+	}{
+		{
+			name:     "IN operator without opening parenthesis fails",
+			sql:      "SELECT * FROM users WHERE id IN '1', '2'",
+			expected: query.Query{},
+			hasError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(tt.sql)
+			if tt.hasError {
+				if err == nil {
+					t.Error(err)
+				}
+				t.Log(err)
+			}
+		})
+	}
+}
+
+func TestFilter(t *testing.T) {
+	// Sample data for testing, using map[string]any for values
+	data := map[string]map[string]any{
+		"1": {"id": "1", "name": "John Doe", "age": "30", "status": "active", "city": "New York",
+			"address": map[string]any{"street": "123 Main St", "zip": "10001"}},
+		"2": {"id": "2", "name": "Jane Smith", "age": "25", "status": "inactive", "city": "Los Angeles",
+			"address": map[string]any{"street": "456 Oak Ave", "zip": "90001"}},
+		"3": {"id": "3", "name": "Peter Jones", "age": "35", "status": "active", "city": "New York",
+			"address": map[string]any{"street": "789 Pine Ln", "zip": "10001"}},
+		"4": {"id": "4", "name": "David Lee", "age": "40", "status": "active", "city": "Chicago",
+			"address": map[string]any{"street": "321 Elm Dr", "zip": "60601"}},
+		"5": {"id": "5", "name": "John Smith", "age": "28", "status": "inactive", "city": "New York",
+			"address": map[string]any{"street": "987 Cedar Rd", "zip": "10001"}},
+	}
+
+	tests := []struct {
+		name        string
+		sql         string
+		expected    map[string]map[string]any
+		expectedErr string
+	}{
+		{
+			name:        "SELECT with '=' operator",
+			sql:         "SELECT * FROM users WHERE status = 'active'",
+			expected:    map[string]map[string]any{"1": data["1"], "3": data["3"], "4": data["4"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with '!=' operator",
+			sql:         "SELECT * FROM users WHERE status != 'active'",
+			expected:    map[string]map[string]any{"2": data["2"], "5": data["5"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with '>' operator (string comparison)",
+			sql:         "SELECT * FROM users WHERE age > '30'",
+			expected:    map[string]map[string]any{"3": data["3"], "4": data["4"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with '<' operator (string comparison)",
+			sql:         "SELECT * FROM users WHERE age < '30'",
+			expected:    map[string]map[string]any{"2": data["2"], "5": data["5"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with 'AND' condition",
+			sql:         "SELECT * FROM users WHERE status = 'active' AND city = 'New York'",
+			expected:    map[string]map[string]any{"1": data["1"], "3": data["3"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with LIKE operator",
+			sql:         "SELECT * FROM users WHERE name LIKE 'John%'",
+			expected:    map[string]map[string]any{"1": data["1"], "5": data["5"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with NOT LIKE operator",
+			sql:         "SELECT * FROM users WHERE name NOT LIKE 'John%'",
+			expected:    map[string]map[string]any{"2": data["2"], "3": data["3"], "4": data["4"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with IN operator",
+			sql:         "SELECT * FROM users WHERE id IN ('1', '3', '5')",
+			expected:    map[string]map[string]any{"1": data["1"], "3": data["3"], "5": data["5"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with NOT IN operator",
+			sql:         "SELECT * FROM users WHERE id NOT IN ('1', '3', '5')",
+			expected:    map[string]map[string]any{"2": data["2"], "4": data["4"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with no matching results",
+			sql:         "SELECT * FROM users WHERE age = '50'",
+			expected:    map[string]map[string]any{},
+			expectedErr: "",
+		},
+		{
+			name:        "Invalid SQL syntax",
+			sql:         "SELECT * FROM users WHERE age = ",
+			expected:    nil,
+			expectedErr: "failed to parse SQL: at WHERE: expected quoted value",
+		},
+		{
+			name:        "SELECT with no WHERE clause",
+			sql:         "SELECT * FROM users",
+			expected:    data,
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with Gt on non-existent field",
+			sql:         "SELECT * FROM users WHERE non_existent_field > '10'",
+			expected:    map[string]map[string]any{},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with IN on non-existent field",
+			sql:         "SELECT * FROM users WHERE non_existent_field IN ('a')",
+			expected:    map[string]map[string]any{},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with IN on non-matching values",
+			sql:         "SELECT * FROM users WHERE id IN ('6', '7')",
+			expected:    map[string]map[string]any{},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with nested field",
+			sql:         "SELECT * FROM users WHERE address.zip = '10001'",
+			expected:    map[string]map[string]any{"1": data["1"], "3": data["3"], "5": data["5"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with nested field and AND",
+			sql:         "SELECT * FROM users WHERE address.zip = '10001' AND status = 'active'",
+			expected:    map[string]map[string]any{"1": data["1"], "3": data["3"]},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with non-existent nested field",
+			sql:         "SELECT * FROM users WHERE address.non_existent_field = '123'",
+			expected:    map[string]map[string]any{},
+			expectedErr: "",
+		},
+		{
+			name:        "SELECT with partially nested non-map field",
+			sql:         "SELECT * FROM users WHERE id.non_existent_field = '123'",
+			expected:    map[string]map[string]any{},
+			expectedErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Filter(tt.sql, data)
+			if err != nil {
+				t.Error(err)
+			}
+		})
 	}
 }

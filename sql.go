@@ -66,6 +66,9 @@ const (
 	stepWhereAnd
 	stepCreateTable
 	stepParseCreateFields //()
+	stepWhereInOpeningParens
+	stepWhereInValue
+	stepWhereInCommaOrClosingParens
 )
 
 type parser struct {
@@ -147,12 +150,13 @@ func (p *parser) doParse() (query.Query, error) {
 			p.pop()
 			p.query.CreateFields[field] = Type
 			NToken := p.peek()
-			if NToken == "," {
+			switch NToken {
+			case ",":
 				p.pop()
 				p.step = stepParseCreateFields
-			} else if NToken == ")" {
+			case ")":
 				p.pop()
-			} else {
+			default:
 				return p.query, fmt.Errorf("syntax error, expect ')'")
 			}
 		case stepSelectField:
@@ -301,27 +305,82 @@ func (p *parser) doParse() (query.Query, error) {
 				currentCondition.Operator = query.Lte
 			case "!=":
 				currentCondition.Operator = query.Ne
+			case "LIKE":
+				currentCondition.Operator = query.Like
+			case "NOT LIKE":
+				currentCondition.Operator = query.NotLike
+			case "IN":
+				currentCondition.Operator = query.In
+			case "NOT IN":
+				currentCondition.Operator = query.NotIn
 			default:
 				return p.query, fmt.Errorf("at WHERE: unknown operator")
 			}
 			p.query.Conditions[len(p.query.Conditions)-1] = currentCondition
 			p.pop()
-			p.step = stepWhereValue
-		case stepWhereValue:
-			currentCondition := p.query.Conditions[len(p.query.Conditions)-1]
-			identifier := p.peek()
-			if isIdentifier(identifier) {
-				currentCondition.Operand2 = identifier
-				currentCondition.Operand2IsField = true
+
+			// For IN and NOT IN operators, expect opening parenthesis
+			if currentCondition.Operator == query.In || currentCondition.Operator == query.NotIn {
+				p.step = stepWhereInOpeningParens
 			} else {
+				p.step = stepWhereValue
+			}
+		case stepWhereInOpeningParens:
+			openingParens := p.peek()
+			if openingParens != "(" {
+				return p.query, fmt.Errorf("at WHERE IN: expected opening parenthesis")
+			}
+			p.pop()
+			p.step = stepWhereInValue
+		case stepWhereInValue:
+			quotedValue, ln := p.peekQuotedStringWithLength()
+			if ln == 0 {
+				return p.query, fmt.Errorf("at WHERE IN: expected quoted value")
+			}
+			currentCondition := &p.query.Conditions[len(p.query.Conditions)-1]
+			currentCondition.InValues = append(currentCondition.InValues, quotedValue)
+			p.pop()
+			p.step = stepWhereInCommaOrClosingParens
+		case stepWhereInCommaOrClosingParens:
+			commaOrClosingParens := p.peek()
+			if commaOrClosingParens == "" {
+				return p.query, fmt.Errorf("at WHERE IN: expected closing parenthesis")
+			}
+			p.pop()
+			if commaOrClosingParens == "," {
+				p.step = stepWhereInValue
+				continue
+			} else if commaOrClosingParens == ")" {
+				p.step = stepWhereAnd
+				continue
+			} else {
+				return p.query, fmt.Errorf("at WHERE IN: expected comma or closing parenthesis")
+			}
+		case stepWhereValue:
+			currentCondition := &p.query.Conditions[len(p.query.Conditions)-1]
+			// For LIKE and NOT LIKE, the operand must be a quoted string.
+			if currentCondition.Operator == query.Like || currentCondition.Operator == query.NotLike {
 				quotedValue, ln := p.peekQuotedStringWithLength()
 				if ln == 0 {
-					return p.query, fmt.Errorf("at WHERE: expected quoted value")
+					return p.query, fmt.Errorf("at WHERE: expected quoted value for LIKE/NOT LIKE")
 				}
 				currentCondition.Operand2 = quotedValue
 				currentCondition.Operand2IsField = false
+			} else {
+				// For other operators, it can be an identifier or a quoted string.
+				identifier := p.peek()
+				if isIdentifier(identifier) {
+					currentCondition.Operand2 = identifier
+					currentCondition.Operand2IsField = true
+				} else {
+					quotedValue, ln := p.peekQuotedStringWithLength()
+					if ln == 0 {
+						return p.query, fmt.Errorf("at WHERE: expected quoted value")
+					}
+					currentCondition.Operand2 = quotedValue
+					currentCondition.Operand2IsField = false
+				}
 			}
-			p.query.Conditions[len(p.query.Conditions)-1] = currentCondition
 			p.pop()
 			p.step = stepWhereAnd
 		case stepWhereAnd:
@@ -425,7 +484,7 @@ func (p *parser) popWhitespace() {
 
 var reservedWords = []string{
 	"(", ")", ">=", "<=", "!=", ",", "=", ">", "<", "SELECT", "INSERT INTO", "VALUES", "UPDATE", "DELETE FROM",
-	"WHERE", "FROM", "SET", "AS", "CREATE TABLE",
+	"WHERE", "FROM", "SET", "AS", "CREATE TABLE", "LIKE", "NOT LIKE", "IN", "NOT IN",
 }
 
 func (p *parser) peekWithLength() (string, int) {
@@ -457,12 +516,17 @@ func (p *parser) peekQuotedStringWithLength() (string, int) {
 }
 
 func (p *parser) peekIdentifierWithLength() (string, int) {
-	for i := p.i; i < len(p.sql); i++ {
-		if matched, _ := regexp.MatchString(`[a-zA-Z0-9_*]`, string(p.sql[i])); !matched {
-			return p.sql[p.i:i], len(p.sql[p.i:i])
+	start := p.i
+	for i := start; i < len(p.sql); i++ {
+		ch := p.sql[i]
+		if !(ch >= 'a' && ch <= 'z' ||
+			ch >= 'A' && ch <= 'Z' ||
+			ch >= '0' && ch <= '9' ||
+			ch == '_' || ch == '*' || ch == '.') {
+			return p.sql[start:i], i - start
 		}
 	}
-	return p.sql[p.i:], len(p.sql[p.i:])
+	return p.sql[start:], len(p.sql) - start
 }
 
 func (p *parser) validate() error {
@@ -488,8 +552,15 @@ func (p *parser) validate() error {
 		if c.Operand1 == "" && c.Operand1IsField {
 			return fmt.Errorf("at WHERE: condition with empty left side operand")
 		}
-		if c.Operand2 == "" && c.Operand2IsField {
-			return fmt.Errorf("at WHERE: condition with empty right side operand")
+		// For IN and NOT IN operators, check InValues instead of Operand2
+		if c.Operator == query.In || c.Operator == query.NotIn {
+			if len(c.InValues) == 0 {
+				return fmt.Errorf("at WHERE: IN/NOT IN condition without values")
+			}
+		} else {
+			if c.Operand2 == "" && c.Operand2IsField {
+				return fmt.Errorf("at WHERE: condition with empty right side operand")
+			}
 		}
 	}
 	if p.query.Type == query.Insert && len(p.query.Inserts) == 0 {
@@ -533,4 +604,126 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// Filter applies a SQL query to a map of data and returns a filtered map.
+// The data is expected to be a map where the key is a unique identifier (like an ID)
+// and the value is another map representing a row, with column names as keys and values of type any.
+func Filter(sql string, data map[string]map[string]any) (map[string]map[string]any, error) {
+	q, err := Parse(sql)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse SQL: %w", err)
+	}
+
+	if q.Type != query.Select {
+		return nil, fmt.Errorf("only SELECT queries can be filtered")
+	}
+
+	filteredData := make(map[string]map[string]any)
+
+	for key, row := range data {
+		if checkConditions(row, q.Conditions) {
+			filteredData[key] = row
+		}
+	}
+
+	return filteredData, nil
+}
+
+func checkConditions(row map[string]any, conditions []query.Condition) bool {
+	if len(conditions) == 0 {
+		return true
+	}
+
+	for _, cond := range conditions {
+		if !checkCondition(row, cond) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func checkCondition(row map[string]any, cond query.Condition) bool {
+	// Handle nested field access using a dot notation, e.g., "user.address.city"
+	field := cond.Operand1
+	fieldParts := strings.Split(field, ".")
+
+	var value any
+	currentMap := row
+	var exists bool
+	for i, part := range fieldParts {
+		if i == len(fieldParts)-1 {
+			value, exists = currentMap[part]
+		} else {
+			nestedValue, ok := currentMap[part]
+			if !ok {
+				exists = false
+				break
+			}
+			currentMap, ok = nestedValue.(map[string]any)
+			if !ok {
+				exists = false
+				break
+			}
+		}
+	}
+
+	if !exists {
+		// If the field doesn't exist, the condition is not met
+		return false
+	}
+
+	// Operand2 is always a string from the parser, so we need to convert the value from the map to a comparable type.
+	// For simplicity, we'll try to convert both to a string for comparison, but we could also handle numbers, etc.
+	// We'll perform type-safe comparisons for different operators.
+	switch cond.Operator {
+	case query.Eq:
+		return fmt.Sprintf("%v", value) == cond.Operand2
+	case query.Ne:
+		return fmt.Sprintf("%v", value) != cond.Operand2
+	case query.Gt:
+		return fmt.Sprintf("%v", value) > cond.Operand2
+	case query.Gte:
+		return fmt.Sprintf("%v", value) >= cond.Operand2
+	case query.Lt:
+		return fmt.Sprintf("%v", value) < cond.Operand2
+	case query.Lte:
+		return fmt.Sprintf("%v", value) <= cond.Operand2
+	case query.Like:
+		stringValue, ok := value.(string)
+		if !ok {
+			return false
+		}
+		pattern := strings.ReplaceAll(cond.Operand2, "%", ".*")
+		pattern = strings.ReplaceAll(pattern, "_", ".")
+		matched, _ := regexp.MatchString("^"+pattern+"$", stringValue)
+		return matched
+	case query.NotLike:
+		stringValue, ok := value.(string)
+		if !ok {
+			return false
+		}
+		pattern := strings.ReplaceAll(cond.Operand2, "%", ".*")
+		pattern = strings.ReplaceAll(pattern, "_", ".")
+		matched, _ := regexp.MatchString("^"+pattern+"$", stringValue)
+		return !matched
+	case query.In:
+		for _, inValue := range cond.InValues {
+			if fmt.Sprintf("%v", value) == inValue {
+				return true
+			}
+		}
+		return false
+	case query.NotIn:
+		for _, inValue := range cond.InValues {
+			if fmt.Sprintf("%v", value) == inValue {
+				return false
+			}
+		}
+		return true
+	default:
+		// Unknown operator, assume condition is not met
+		return false
+	}
 }
