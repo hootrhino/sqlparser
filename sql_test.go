@@ -7,14 +7,13 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/hootrhino/sqlparser/query"
 	"github.com/stretchr/testify/require"
 )
 
 type testCase struct {
 	Name     string
 	SQL      string
-	Expected query.Query
+	Expected Query
 	Err      error
 }
 
@@ -30,50 +29,50 @@ func TestSQL(t *testing.T) {
 		{
 			Name:     "empty query fails",
 			SQL:      "",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("query type cannot be empty"),
 		},
 		{
 			Name:     "SELECT without FROM fails",
 			SQL:      "SELECT",
-			Expected: query.Query{Type: query.Select},
+			Expected: Query{Type: Select},
 			Err:      fmt.Errorf("table name cannot be empty"),
 		},
 		{
 			Name:     "SELECT without fields fails",
 			SQL:      "SELECT FROM 'a'",
-			Expected: query.Query{Type: query.Select},
+			Expected: Query{Type: Select},
 			Err:      fmt.Errorf("at SELECT: expected field to SELECT"),
 		},
 		{
 			Name:     "SELECT with comma and empty field fails",
 			SQL:      "SELECT b, FROM 'a'",
-			Expected: query.Query{Type: query.Select},
+			Expected: Query{Type: Select},
 			Err:      fmt.Errorf("at SELECT: expected field to SELECT"),
 		},
 		{
 			Name:     "SELECT works",
 			SQL:      "SELECT a FROM 'b'",
-			Expected: query.Query{Type: query.Select, TableName: "b", Fields: []string{"a"}},
+			Expected: Query{Type: Select, TableName: "b", Fields: []string{"a"}},
 			Err:      nil,
 		},
 		{
 			Name:     "SELECT works with lowercase",
 			SQL:      "select a fRoM 'b'",
-			Expected: query.Query{Type: query.Select, TableName: "b", Fields: []string{"a"}},
+			Expected: Query{Type: Select, TableName: "b", Fields: []string{"a"}},
 			Err:      nil,
 		},
 		{
 			Name:     "SELECT many fields works",
 			SQL:      "SELECT a, c, d FROM 'b'",
-			Expected: query.Query{Type: query.Select, TableName: "b", Fields: []string{"a", "c", "d"}},
+			Expected: Query{Type: Select, TableName: "b", Fields: []string{"a", "c", "d"}},
 			Err:      nil,
 		},
 		{
 			Name: "SELECT with alias works",
 			SQL:  "SELECT a as z, b as y, c FROM 'b'",
-			Expected: query.Query{
-				Type:      query.Select,
+			Expected: Query{
+				Type:      Select,
 				TableName: "b",
 				Fields:    []string{"a", "b", "c"},
 				Aliases: map[string]string{
@@ -87,24 +86,24 @@ func TestSQL(t *testing.T) {
 		{
 			Name:     "SELECT with empty WHERE fails",
 			SQL:      "SELECT a, c, d FROM 'b' WHERE",
-			Expected: query.Query{Type: query.Select, TableName: "b", Fields: []string{"a", "c", "d"}},
+			Expected: Query{Type: Select, TableName: "b", Fields: []string{"a", "c", "d"}},
 			Err:      fmt.Errorf("at WHERE: empty WHERE clause"),
 		},
 		{
 			Name:     "SELECT with WHERE with only operand fails",
 			SQL:      "SELECT a, c, d FROM 'b' WHERE a",
-			Expected: query.Query{Type: query.Select, TableName: "b", Fields: []string{"a", "c", "d"}},
+			Expected: Query{Type: Select, TableName: "b", Fields: []string{"a", "c", "d"}},
 			Err:      fmt.Errorf("at WHERE: condition without operator"),
 		},
 		{
 			Name: "SELECT with WHERE with = works",
 			SQL:  "SELECT a, c, d FROM 'b' WHERE a = ''",
-			Expected: query.Query{
-				Type:      query.Select,
+			Expected: Query{
+				Type:      Select,
 				TableName: "b",
 				Fields:    []string{"a", "c", "d"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Eq, Operand2: "", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Eq, Operand2: "", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -112,12 +111,12 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "SELECT with WHERE with < works",
 			SQL:  "SELECT a, c, d FROM 'b' WHERE a < '1'",
-			Expected: query.Query{
-				Type:      query.Select,
+			Expected: Query{
+				Type:      Select,
 				TableName: "b",
 				Fields:    []string{"a", "c", "d"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Lt, Operand2: "1", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Lt, Operand2: "1", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -125,12 +124,12 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "SELECT with WHERE with <= works",
 			SQL:  "SELECT a, c, d FROM 'b' WHERE a <= '1'",
-			Expected: query.Query{
-				Type:      query.Select,
+			Expected: Query{
+				Type:      Select,
 				TableName: "b",
 				Fields:    []string{"a", "c", "d"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Lte, Operand2: "1", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Lte, Operand2: "1", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -138,12 +137,12 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "SELECT with WHERE with > works",
 			SQL:  "SELECT a, c, d FROM 'b' WHERE a > '1'",
-			Expected: query.Query{
-				Type:      query.Select,
+			Expected: Query{
+				Type:      Select,
 				TableName: "b",
 				Fields:    []string{"a", "c", "d"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Gt, Operand2: "1", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Gt, Operand2: "1", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -151,12 +150,12 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "SELECT with WHERE with >= works",
 			SQL:  "SELECT a, c, d FROM 'b' WHERE a >= '1'",
-			Expected: query.Query{
-				Type:      query.Select,
+			Expected: Query{
+				Type:      Select,
 				TableName: "b",
 				Fields:    []string{"a", "c", "d"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Gte, Operand2: "1", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Gte, Operand2: "1", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -164,12 +163,12 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "SELECT with WHERE with != works",
 			SQL:  "SELECT a, c, d FROM 'b' WHERE a != '1'",
-			Expected: query.Query{
-				Type:      query.Select,
+			Expected: Query{
+				Type:      Select,
 				TableName: "b",
 				Fields:    []string{"a", "c", "d"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Ne, Operand2: "1", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Ne, Operand2: "1", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -177,12 +176,12 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "SELECT with WHERE with != works (comparing field against another field)",
 			SQL:  "SELECT a, c, d FROM 'b' WHERE a != b",
-			Expected: query.Query{
-				Type:      query.Select,
+			Expected: Query{
+				Type:      Select,
 				TableName: "b",
 				Fields:    []string{"a", "c", "d"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Ne, Operand2: "b", Operand2IsField: true},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Ne, Operand2: "b", Operand2IsField: true},
 				},
 			},
 			Err: nil,
@@ -190,8 +189,8 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "SELECT * works",
 			SQL:  "SELECT * FROM 'b'",
-			Expected: query.Query{
-				Type:       query.Select,
+			Expected: Query{
+				Type:       Select,
 				TableName:  "b",
 				Fields:     []string{"*"},
 				Conditions: nil,
@@ -201,8 +200,8 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "SELECT a, * works",
 			SQL:  "SELECT a, * FROM 'b'",
-			Expected: query.Query{
-				Type:       query.Select,
+			Expected: Query{
+				Type:       Select,
 				TableName:  "b",
 				Fields:     []string{"a", "*"},
 				Conditions: nil,
@@ -212,13 +211,13 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "SELECT with WHERE with two conditions using AND works",
 			SQL:  "SELECT a, c, d FROM 'b' WHERE a != '1' AND b = '2'",
-			Expected: query.Query{
-				Type:      query.Select,
+			Expected: Query{
+				Type:      Select,
 				TableName: "b",
 				Fields:    []string{"a", "c", "d"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Ne, Operand2: "1", Operand2IsField: false},
-					{Operand1: "b", Operand1IsField: true, Operator: query.Eq, Operand2: "2", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Ne, Operand2: "1", Operand2IsField: false},
+					{Operand1: "b", Operand1IsField: true, Operator: Eq, Operand2: "2", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -226,54 +225,54 @@ func TestSQL(t *testing.T) {
 		{
 			Name:     "Empty UPDATE fails",
 			SQL:      "UPDATE",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("table name cannot be empty"),
 		},
 		{
 			Name:     "Incomplete UPDATE with table name fails",
 			SQL:      "UPDATE 'a'",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at WHERE: WHERE clause is mandatory for UPDATE & DELETE"),
 		},
 		{
 			Name:     "Incomplete UPDATE with table name and SET fails",
 			SQL:      "UPDATE 'a' SET",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at WHERE: WHERE clause is mandatory for UPDATE & DELETE"),
 		},
 		{
 			Name:     "Incomplete UPDATE with table name, SET with a field but no value and WHERE fails",
 			SQL:      "UPDATE 'a' SET b WHERE",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at UPDATE: expected '='"),
 		},
 		{
 			Name:     "Incomplete UPDATE with table name, SET with a field and = but no value and WHERE fails",
 			SQL:      "UPDATE 'a' SET b = WHERE",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at UPDATE: expected quoted value"),
 		},
 		{
 			Name:     "Incomplete UPDATE due to no WHERE clause fails",
 			SQL:      "UPDATE 'a' SET b = 'hello' WHERE",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at WHERE: empty WHERE clause"),
 		},
 		{
 			Name:     "Incomplete UPDATE due incomplete WHERE clause fails",
 			SQL:      "UPDATE 'a' SET b = 'hello' WHERE a",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at WHERE: condition without operator"),
 		},
 		{
 			Name: "UPDATE works",
 			SQL:  "UPDATE 'a' SET b = 'hello' WHERE a = '1'",
-			Expected: query.Query{
-				Type:      query.Update,
+			Expected: Query{
+				Type:      Update,
 				TableName: "a",
 				Updates:   map[string]string{"b": "hello"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Eq, Operand2: "1", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Eq, Operand2: "1", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -281,12 +280,12 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "UPDATE works with simple quote inside",
 			SQL:  "UPDATE 'a' SET b = 'hello\\'world' WHERE a = '1'",
-			Expected: query.Query{
-				Type:      query.Update,
+			Expected: Query{
+				Type:      Update,
 				TableName: "a",
 				Updates:   map[string]string{"b": "hello\\'world"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Eq, Operand2: "1", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Eq, Operand2: "1", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -294,12 +293,12 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "UPDATE with multiple SETs works",
 			SQL:  "UPDATE 'a' SET b = 'hello', c = 'bye' WHERE a = '1'",
-			Expected: query.Query{
-				Type:      query.Update,
+			Expected: Query{
+				Type:      Update,
 				TableName: "a",
 				Updates:   map[string]string{"b": "hello", "c": "bye"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Eq, Operand2: "1", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Eq, Operand2: "1", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -307,13 +306,13 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "UPDATE with multiple SETs and multiple conditions works",
 			SQL:  "UPDATE 'a' SET b = 'hello', c = 'bye' WHERE a = '1' AND b = '789'",
-			Expected: query.Query{
-				Type:      query.Update,
+			Expected: Query{
+				Type:      Update,
 				TableName: "a",
 				Updates:   map[string]string{"b": "hello", "c": "bye"},
-				Conditions: []query.Condition{
-					{Operand1: "a", Operand1IsField: true, Operator: query.Eq, Operand2: "1", Operand2IsField: false},
-					{Operand1: "b", Operand1IsField: true, Operator: query.Eq, Operand2: "789", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "a", Operand1IsField: true, Operator: Eq, Operand2: "1", Operand2IsField: false},
+					{Operand1: "b", Operand1IsField: true, Operator: Eq, Operand2: "789", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -321,35 +320,35 @@ func TestSQL(t *testing.T) {
 		{
 			Name:     "Empty DELETE fails",
 			SQL:      "DELETE FROM",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("table name cannot be empty"),
 		},
 		{
 			Name:     "DELETE without WHERE fails",
 			SQL:      "DELETE FROM 'a'",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at WHERE: WHERE clause is mandatory for UPDATE & DELETE"),
 		},
 		{
 			Name:     "DELETE with empty WHERE fails",
 			SQL:      "DELETE FROM 'a' WHERE",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at WHERE: empty WHERE clause"),
 		},
 		{
 			Name:     "DELETE with WHERE with field but no operator fails",
 			SQL:      "DELETE FROM 'a' WHERE b",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at WHERE: condition without operator"),
 		},
 		{
 			Name: "DELETE with WHERE works",
 			SQL:  "DELETE FROM 'a' WHERE b = '1'",
-			Expected: query.Query{
-				Type:      query.Delete,
+			Expected: Query{
+				Type:      Delete,
 				TableName: "a",
-				Conditions: []query.Condition{
-					{Operand1: "b", Operand1IsField: true, Operator: query.Eq, Operand2: "1", Operand2IsField: false},
+				Conditions: []Condition{
+					{Operand1: "b", Operand1IsField: true, Operator: Eq, Operand2: "1", Operand2IsField: false},
 				},
 			},
 			Err: nil,
@@ -357,50 +356,50 @@ func TestSQL(t *testing.T) {
 		{
 			Name:     "Empty INSERT fails",
 			SQL:      "INSERT INTO",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("table name cannot be empty"),
 		},
 		{
 			Name:     "INSERT with no rows to insert fails",
 			SQL:      "INSERT INTO 'a'",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at INSERT INTO: need at least one row to insert"),
 		},
 		{
 			Name:     "INSERT with incomplete value section fails",
 			SQL:      "INSERT INTO 'a' (",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at INSERT INTO: need at least one row to insert"),
 		},
 		{
 			Name:     "INSERT with incomplete value section fails #2",
 			SQL:      "INSERT INTO 'a' (b",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at INSERT INTO: need at least one row to insert"),
 		},
 		{
 			Name:     "INSERT with incomplete value section fails #3",
 			SQL:      "INSERT INTO 'a' (b)",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at INSERT INTO: need at least one row to insert"),
 		},
 		{
 			Name:     "INSERT with incomplete value section fails #4",
 			SQL:      "INSERT INTO 'a' (b) VALUES",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at INSERT INTO: need at least one row to insert"),
 		},
 		{
 			Name:     "INSERT with incomplete row fails",
 			SQL:      "INSERT INTO 'a' (b) VALUES (",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at INSERT INTO: value count doesn't match field count"),
 		},
 		{
 			Name: "INSERT works",
 			SQL:  "INSERT INTO 'a' (b) VALUES ('1')",
-			Expected: query.Query{
-				Type:      query.Insert,
+			Expected: Query{
+				Type:      Insert,
 				TableName: "a",
 				Fields:    []string{"b"},
 				Inserts:   [][]string{{"1"}},
@@ -410,14 +409,14 @@ func TestSQL(t *testing.T) {
 		{
 			Name:     "INSERT * fails",
 			SQL:      "INSERT INTO 'a' (*) VALUES ('1')",
-			Expected: query.Query{},
+			Expected: Query{},
 			Err:      fmt.Errorf("at INSERT INTO: expected at least one field to insert"),
 		},
 		{
 			Name: "INSERT with multiple fields works",
 			SQL:  "INSERT INTO 'a' (b,c,    d) VALUES ('1','2' ,  '3' )",
-			Expected: query.Query{
-				Type:      query.Insert,
+			Expected: Query{
+				Type:      Insert,
 				TableName: "a",
 				Fields:    []string{"b", "c", "d"},
 				Inserts:   [][]string{{"1", "2", "3"}},
@@ -427,8 +426,8 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "INSERT with multiple fields and multiple values works",
 			SQL:  "INSERT INTO 'a' (b,c,    d) VALUES ('1','2' ,  '3' ),('4','5' ,'6' )",
-			Expected: query.Query{
-				Type:      query.Insert,
+			Expected: Query{
+				Type:      Insert,
 				TableName: "a",
 				Fields:    []string{"b", "c", "d"},
 				Inserts:   [][]string{{"1", "2", "3"}, {"4", "5", "6"}},
@@ -438,8 +437,8 @@ func TestSQL(t *testing.T) {
 		{
 			Name: "CREATE TABLE",
 			SQL:  "CREATE TABLE test (name string, age number, gender bool)",
-			Expected: query.Query{
-				Type:      query.Create,
+			Expected: Query{
+				Type:      Create,
 				TableName: "test",
 				CreateFields: map[string]string{
 					"name":   "string",
@@ -451,7 +450,7 @@ func TestSQL(t *testing.T) {
 		},
 	}
 
-	output := output{Types: query.TypeString, Operators: query.OperatorString}
+	output := output{Types: TypeString, Operators: OperatorString}
 	for _, tc := range ts {
 		t.Run(tc.Name, func(t *testing.T) {
 			actual, err := ParseMany([]string{tc.SQL})
@@ -497,21 +496,21 @@ func TestParseLikeAndInOperators(t *testing.T) {
 	tests := []struct {
 		name     string
 		sql      string
-		expected query.Query
+		expected Query
 		hasError bool
 	}{
 		{
 			name: "SELECT with LIKE operator",
 			sql:  "SELECT name FROM users WHERE name LIKE 'John%'",
-			expected: query.Query{
-				Type:      query.Select,
+			expected: Query{
+				Type:      Select,
 				TableName: "users",
 				Fields:    []string{"name"},
-				Conditions: []query.Condition{
+				Conditions: []Condition{
 					{
 						Operand1:        "name",
 						Operand1IsField: true,
-						Operator:        query.Like,
+						Operator:        Like,
 						Operand2:        "John%",
 						Operand2IsField: false,
 					},
@@ -522,15 +521,15 @@ func TestParseLikeAndInOperators(t *testing.T) {
 		{
 			name: "SELECT with NOT LIKE operator",
 			sql:  "SELECT * FROM products WHERE name NOT LIKE '%test%'",
-			expected: query.Query{
-				Type:      query.Select,
+			expected: Query{
+				Type:      Select,
 				TableName: "products",
 				Fields:    []string{"*"},
-				Conditions: []query.Condition{
+				Conditions: []Condition{
 					{
 						Operand1:        "name",
 						Operand1IsField: true,
-						Operator:        query.NotLike,
+						Operator:        NotLike,
 						Operand2:        "%test%",
 						Operand2IsField: false,
 					},
@@ -541,14 +540,14 @@ func TestParseLikeAndInOperators(t *testing.T) {
 		{
 			name: "DELETE with LIKE operator",
 			sql:  "DELETE FROM logs WHERE message LIKE 'Error:%'",
-			expected: query.Query{
-				Type:      query.Delete,
+			expected: Query{
+				Type:      Delete,
 				TableName: "logs",
-				Conditions: []query.Condition{
+				Conditions: []Condition{
 					{
 						Operand1:        "message",
 						Operand1IsField: true,
-						Operator:        query.Like,
+						Operator:        Like,
 						Operand2:        "Error:%",
 						Operand2IsField: false,
 					},
@@ -559,15 +558,15 @@ func TestParseLikeAndInOperators(t *testing.T) {
 		{
 			name: "UPDATE with LIKE operator",
 			sql:  "UPDATE products SET price = '99' WHERE name LIKE 'Pro%'",
-			expected: query.Query{
-				Type:      query.Update,
+			expected: Query{
+				Type:      Update,
 				TableName: "products",
 				Updates:   map[string]string{"price": "99"},
-				Conditions: []query.Condition{
+				Conditions: []Condition{
 					{
 						Operand1:        "name",
 						Operand1IsField: true,
-						Operator:        query.Like,
+						Operator:        Like,
 						Operand2:        "Pro%",
 						Operand2IsField: false,
 					},
@@ -578,15 +577,15 @@ func TestParseLikeAndInOperators(t *testing.T) {
 		{
 			name: "SELECT with IN operator",
 			sql:  "SELECT name FROM users WHERE id IN ('1', '2', '3')",
-			expected: query.Query{
-				Type:      query.Select,
+			expected: Query{
+				Type:      Select,
 				TableName: "users",
 				Fields:    []string{"name"},
-				Conditions: []query.Condition{
+				Conditions: []Condition{
 					{
 						Operand1:        "id",
 						Operand1IsField: true,
-						Operator:        query.In,
+						Operator:        In,
 						InValues:        []string{"1", "2", "3"},
 					},
 				},
@@ -596,15 +595,15 @@ func TestParseLikeAndInOperators(t *testing.T) {
 		{
 			name: "SELECT with NOT IN operator",
 			sql:  "SELECT * FROM products WHERE status NOT IN ('sold', 'discontinued')",
-			expected: query.Query{
-				Type:      query.Select,
+			expected: Query{
+				Type:      Select,
 				TableName: "products",
 				Fields:    []string{"*"},
-				Conditions: []query.Condition{
+				Conditions: []Condition{
 					{
 						Operand1:        "status",
 						Operand1IsField: true,
-						Operator:        query.NotIn,
+						Operator:        NotIn,
 						InValues:        []string{"sold", "discontinued"},
 					},
 				},
@@ -614,14 +613,14 @@ func TestParseLikeAndInOperators(t *testing.T) {
 		{
 			name: "DELETE with IN operator",
 			sql:  "DELETE FROM logs WHERE level IN ('INFO', 'DEBUG')",
-			expected: query.Query{
-				Type:      query.Delete,
+			expected: Query{
+				Type:      Delete,
 				TableName: "logs",
-				Conditions: []query.Condition{
+				Conditions: []Condition{
 					{
 						Operand1:        "level",
 						Operand1IsField: true,
-						Operator:        query.In,
+						Operator:        In,
 						InValues:        []string{"INFO", "DEBUG"},
 					},
 				},
@@ -631,15 +630,15 @@ func TestParseLikeAndInOperators(t *testing.T) {
 		{
 			name: "UPDATE with IN operator",
 			sql:  "UPDATE users SET active = 'false' WHERE id IN ('10', '20')",
-			expected: query.Query{
-				Type:      query.Update,
+			expected: Query{
+				Type:      Update,
 				TableName: "users",
 				Updates:   map[string]string{"active": "false"},
-				Conditions: []query.Condition{
+				Conditions: []Condition{
 					{
 						Operand1:        "id",
 						Operand1IsField: true,
-						Operator:        query.In,
+						Operator:        In,
 						InValues:        []string{"10", "20"},
 					},
 				},
@@ -649,19 +648,19 @@ func TestParseLikeAndInOperators(t *testing.T) {
 		{
 			name:     "IN operator with empty values fails",
 			sql:      "SELECT * FROM users WHERE id IN ()",
-			expected: query.Query{},
+			expected: Query{},
 			hasError: true,
 		},
 		{
 			name:     "IN operator with incomplete values fails",
 			sql:      "SELECT * FROM users WHERE id IN ('1', '2'",
-			expected: query.Query{},
+			expected: Query{},
 			hasError: true,
 		},
 		{
 			name:     "LIKE operator with incomplete value fails",
 			sql:      "SELECT * FROM users WHERE name LIKE 'John",
-			expected: query.Query{},
+			expected: Query{},
 			hasError: true,
 		},
 	}
@@ -685,13 +684,13 @@ func Test_IN_operator_without_opening_parenthesis_fails(t *testing.T) {
 	tests := []struct {
 		name     string
 		sql      string
-		expected query.Query
+		expected Query
 		hasError bool
 	}{
 		{
 			name:     "IN operator without opening parenthesis fails",
 			sql:      "SELECT * FROM users WHERE id IN '1', '2'",
-			expected: query.Query{},
+			expected: Query{},
 			hasError: true,
 		},
 	}
@@ -848,7 +847,7 @@ func TestFilter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Filter(tt.sql, data)
+			_, err := FilterRecursive(tt.sql, data)
 			if err != nil {
 				t.Error(err)
 			}

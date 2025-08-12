@@ -3,24 +3,23 @@ package sqlparser
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
-
-	"github.com/hootrhino/sqlparser/query"
 )
 
-// Parse takes a string representing a SQL query and parses it into a query.Query struct. It may fail.
-func Parse(sqls string) (query.Query, error) {
+// Parse takes a string representing a SQL query and parses it into a Query struct. It may fail.
+func Parse(sqls string) (Query, error) {
 	qs, err := ParseMany([]string{sqls})
 	if len(qs) == 0 {
-		return query.Query{}, err
+		return Query{}, err
 	}
 	return qs[0], err
 }
 
-// ParseMany takes a string slice representing many SQL queries and parses them into a query.Query struct slice.
+// ParseMany takes a string slice representing many SQL queries and parses them into a Query struct slice.
 // It may fail. If it fails, it will stop at the first failure.
-func ParseMany(sqls []string) ([]query.Query, error) {
-	qs := []query.Query{}
+func ParseMany(sqls []string) ([]Query, error) {
+	qs := []Query{}
 	for _, sql := range sqls {
 		q, err := parse(sql)
 		if err != nil {
@@ -31,8 +30,8 @@ func ParseMany(sqls []string) ([]query.Query, error) {
 	return qs, nil
 }
 
-func parse(sql string) (query.Query, error) {
-	return (&parser{0, strings.TrimSpace(sql), stepType, query.Query{}, nil, ""}).parse()
+func parse(sql string) (Query, error) {
+	return (&parser{0, strings.TrimSpace(sql), stepType, Query{}, nil, ""}).parse()
 }
 
 type step int
@@ -75,12 +74,12 @@ type parser struct {
 	i               int
 	sql             string
 	step            step
-	query           query.Query
+	query           Query
 	err             error
 	nextUpdateField string
 }
 
-func (p *parser) parse() (query.Query, error) {
+func (p *parser) parse() (Query, error) {
 	q, err := p.doParse()
 	p.err = err
 	if p.err == nil {
@@ -90,7 +89,7 @@ func (p *parser) parse() (query.Query, error) {
 	return q, p.err
 }
 
-func (p *parser) doParse() (query.Query, error) {
+func (p *parser) doParse() (Query, error) {
 	for {
 		if p.i >= len(p.sql) {
 			return p.query, p.err
@@ -100,24 +99,24 @@ func (p *parser) doParse() (query.Query, error) {
 			QType := strings.ToUpper(p.peek())
 			switch QType {
 			case "SELECT":
-				p.query.Type = query.Select
+				p.query.Type = Select
 				p.pop()
 				p.step = stepSelectField
 			case "INSERT INTO":
-				p.query.Type = query.Insert
+				p.query.Type = Insert
 				p.pop()
 				p.step = stepInsertTable
 			case "UPDATE":
-				p.query.Type = query.Update
+				p.query.Type = Update
 				p.query.Updates = map[string]string{}
 				p.pop()
 				p.step = stepUpdateTable
 			case "DELETE FROM":
-				p.query.Type = query.Delete
+				p.query.Type = Delete
 				p.pop()
 				p.step = stepDeleteFromTable
 			case "CREATE TABLE":
-				p.query.Type = query.Create
+				p.query.Type = Create
 				p.pop()
 				p.step = stepCreateTable
 				p.query.CreateFields = map[string]string{}
@@ -286,7 +285,7 @@ func (p *parser) doParse() (query.Query, error) {
 			if !isIdentifier(identifier) {
 				return p.query, fmt.Errorf("at WHERE: expected field")
 			}
-			p.query.Conditions = append(p.query.Conditions, query.Condition{Operand1: identifier, Operand1IsField: true})
+			p.query.Conditions = append(p.query.Conditions, Condition{Operand1: identifier, Operand1IsField: true})
 			p.pop()
 			p.step = stepWhereOperator
 		case stepWhereOperator:
@@ -294,25 +293,25 @@ func (p *parser) doParse() (query.Query, error) {
 			currentCondition := p.query.Conditions[len(p.query.Conditions)-1]
 			switch operator {
 			case "=":
-				currentCondition.Operator = query.Eq
+				currentCondition.Operator = Eq
 			case ">":
-				currentCondition.Operator = query.Gt
+				currentCondition.Operator = Gt
 			case ">=":
-				currentCondition.Operator = query.Gte
+				currentCondition.Operator = Gte
 			case "<":
-				currentCondition.Operator = query.Lt
+				currentCondition.Operator = Lt
 			case "<=":
-				currentCondition.Operator = query.Lte
+				currentCondition.Operator = Lte
 			case "!=":
-				currentCondition.Operator = query.Ne
+				currentCondition.Operator = Ne
 			case "LIKE":
-				currentCondition.Operator = query.Like
+				currentCondition.Operator = Like
 			case "NOT LIKE":
-				currentCondition.Operator = query.NotLike
+				currentCondition.Operator = NotLike
 			case "IN":
-				currentCondition.Operator = query.In
+				currentCondition.Operator = In
 			case "NOT IN":
-				currentCondition.Operator = query.NotIn
+				currentCondition.Operator = NotIn
 			default:
 				return p.query, fmt.Errorf("at WHERE: unknown operator")
 			}
@@ -320,7 +319,7 @@ func (p *parser) doParse() (query.Query, error) {
 			p.pop()
 
 			// For IN and NOT IN operators, expect opening parenthesis
-			if currentCondition.Operator == query.In || currentCondition.Operator == query.NotIn {
+			if currentCondition.Operator == In || currentCondition.Operator == NotIn {
 				p.step = stepWhereInOpeningParens
 			} else {
 				p.step = stepWhereValue
@@ -359,7 +358,7 @@ func (p *parser) doParse() (query.Query, error) {
 		case stepWhereValue:
 			currentCondition := &p.query.Conditions[len(p.query.Conditions)-1]
 			// For LIKE and NOT LIKE, the operand must be a quoted string.
-			if currentCondition.Operator == query.Like || currentCondition.Operator == query.NotLike {
+			if currentCondition.Operator == Like || currentCondition.Operator == NotLike {
 				quotedValue, ln := p.peekQuotedStringWithLength()
 				if ln == 0 {
 					return p.query, fmt.Errorf("at WHERE: expected quoted value for LIKE/NOT LIKE")
@@ -533,27 +532,27 @@ func (p *parser) validate() error {
 	if len(p.query.Conditions) == 0 && p.step == stepWhereField {
 		return fmt.Errorf("at WHERE: empty WHERE clause")
 	}
-	if p.query.Type == query.UnknownType {
+	if p.query.Type == UnknownType {
 		return fmt.Errorf("query type cannot be empty")
 	}
-	if p.query.Type == query.Create {
+	if p.query.Type == Create {
 		return nil
 	}
 	if p.query.TableName == "" {
 		return fmt.Errorf("table name cannot be empty")
 	}
-	if len(p.query.Conditions) == 0 && (p.query.Type == query.Update || p.query.Type == query.Delete) {
+	if len(p.query.Conditions) == 0 && (p.query.Type == Update || p.query.Type == Delete) {
 		return fmt.Errorf("at WHERE: WHERE clause is mandatory for UPDATE & DELETE")
 	}
 	for _, c := range p.query.Conditions {
-		if c.Operator == query.UnknownOperator {
+		if c.Operator == UnknownOperator {
 			return fmt.Errorf("at WHERE: condition without operator")
 		}
 		if c.Operand1 == "" && c.Operand1IsField {
 			return fmt.Errorf("at WHERE: condition with empty left side operand")
 		}
 		// For IN and NOT IN operators, check InValues instead of Operand2
-		if c.Operator == query.In || c.Operator == query.NotIn {
+		if c.Operator == In || c.Operator == NotIn {
 			if len(c.InValues) == 0 {
 				return fmt.Errorf("at WHERE: IN/NOT IN condition without values")
 			}
@@ -563,10 +562,10 @@ func (p *parser) validate() error {
 			}
 		}
 	}
-	if p.query.Type == query.Insert && len(p.query.Inserts) == 0 {
+	if p.query.Type == Insert && len(p.query.Inserts) == 0 {
 		return fmt.Errorf("at INSERT INTO: need at least one row to insert")
 	}
-	if p.query.Type == query.Insert {
+	if p.query.Type == Insert {
 		for _, i := range p.query.Inserts {
 			if len(i) != len(p.query.Fields) {
 				return fmt.Errorf("at INSERT INTO: value count doesn't match field count")
@@ -606,23 +605,24 @@ func min(a, b int) int {
 	return b
 }
 
-// Filter applies a SQL query to a map of data and returns a filtered map.
+// FilterRecursive applies a SQL query to a map of data and returns a filtered map using recursion.
 // The data is expected to be a map where the key is a unique identifier (like an ID)
 // and the value is another map representing a row, with column names as keys and values of type any.
-func Filter(sql string, data map[string]map[string]any) (map[string]map[string]any, error) {
+func FilterRecursive(sql string, data map[string]map[string]any) (map[string]map[string]any, error) {
 	q, err := Parse(sql)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse SQL: %w", err)
 	}
 
-	if q.Type != query.Select {
+	if q.Type != Select {
 		return nil, fmt.Errorf("only SELECT queries can be filtered")
 	}
 
 	filteredData := make(map[string]map[string]any)
 
+	// Recursively filter each row
 	for key, row := range data {
-		if checkConditions(row, q.Conditions) {
+		if evaluateConditionsRecursive(row, q.Conditions, 0) {
 			filteredData[key] = row
 		}
 	}
@@ -630,100 +630,226 @@ func Filter(sql string, data map[string]map[string]any) (map[string]map[string]a
 	return filteredData, nil
 }
 
-func checkConditions(row map[string]any, conditions []query.Condition) bool {
-	if len(conditions) == 0 {
+// evaluateConditionsRecursive recursively evaluates all conditions using AND logic
+// conditionIndex represents the current condition being evaluated
+func evaluateConditionsRecursive(row map[string]any, conditions []Condition, conditionIndex int) bool {
+	// Base case: if we've evaluated all conditions successfully, return true
+	if conditionIndex >= len(conditions) {
 		return true
 	}
 
-	for _, cond := range conditions {
-		if !checkCondition(row, cond) {
-			return false
-		}
+	// Evaluate the current condition
+	currentCondition := conditions[conditionIndex]
+	if !evaluateConditionRecursive(row, currentCondition) {
+		// If current condition fails, short-circuit and return false
+		return false
 	}
 
-	return true
+	// Recursively evaluate the next condition
+	return evaluateConditionsRecursive(row, conditions, conditionIndex+1)
 }
 
-func checkCondition(row map[string]any, cond query.Condition) bool {
-	// Handle nested field access using a dot notation, e.g., "user.address.city"
-	field := cond.Operand1
-	fieldParts := strings.Split(field, ".")
-
-	var value any
-	currentMap := row
-	var exists bool
-	for i, part := range fieldParts {
-		if i == len(fieldParts)-1 {
-			value, exists = currentMap[part]
-		} else {
-			nestedValue, ok := currentMap[part]
-			if !ok {
-				exists = false
-				break
-			}
-			currentMap, ok = nestedValue.(map[string]any)
-			if !ok {
-				exists = false
-				break
-			}
-		}
-	}
-
+// evaluateConditionRecursive recursively evaluates a single condition
+func evaluateConditionRecursive(row map[string]any, cond Condition) bool {
+	// Get the field value using recursive field access
+	value, exists := getFieldValueRecursive(row, strings.Split(cond.Operand1, "."), 0)
 	if !exists {
-		// If the field doesn't exist, the condition is not met
 		return false
 	}
 
-	// Operand2 is always a string from the parser, so we need to convert the value from the map to a comparable type.
-	// For simplicity, we'll try to convert both to a string for comparison, but we could also handle numbers, etc.
-	// We'll perform type-safe comparisons for different operators.
+	// Handle different operators recursively
+	return evaluateOperatorRecursive(value, cond)
+}
+
+// getFieldValueRecursive recursively accesses nested fields using dot notation
+// fieldParts contains the field path split by dots, partIndex is the current part being accessed
+func getFieldValueRecursive(data map[string]any, fieldParts []string, partIndex int) (any, bool) {
+	// Base case: we've reached the final field part
+	if partIndex >= len(fieldParts) {
+		return nil, false
+	}
+
+	currentPart := fieldParts[partIndex]
+	value, exists := data[currentPart]
+	if !exists {
+		return nil, false
+	}
+
+	// Base case: this is the last part, return the value
+	if partIndex == len(fieldParts)-1 {
+		return value, true
+	}
+
+	// Recursive case: continue with nested map
+	nestedMap, ok := value.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+
+	return getFieldValueRecursive(nestedMap, fieldParts, partIndex+1)
+}
+
+// evaluateOperatorRecursive recursively evaluates different operators
+func evaluateOperatorRecursive(value any, cond Condition) bool {
 	switch cond.Operator {
-	case query.Eq:
-		return fmt.Sprintf("%v", value) == cond.Operand2
-	case query.Ne:
-		return fmt.Sprintf("%v", value) != cond.Operand2
-	case query.Gt:
-		return fmt.Sprintf("%v", value) > cond.Operand2
-	case query.Gte:
-		return fmt.Sprintf("%v", value) >= cond.Operand2
-	case query.Lt:
-		return fmt.Sprintf("%v", value) < cond.Operand2
-	case query.Lte:
-		return fmt.Sprintf("%v", value) <= cond.Operand2
-	case query.Like:
-		stringValue, ok := value.(string)
-		if !ok {
-			return false
-		}
-		pattern := strings.ReplaceAll(cond.Operand2, "%", ".*")
-		pattern = strings.ReplaceAll(pattern, "_", ".")
-		matched, _ := regexp.MatchString("^"+pattern+"$", stringValue)
-		return matched
-	case query.NotLike:
-		stringValue, ok := value.(string)
-		if !ok {
-			return false
-		}
-		pattern := strings.ReplaceAll(cond.Operand2, "%", ".*")
-		pattern = strings.ReplaceAll(pattern, "_", ".")
-		matched, _ := regexp.MatchString("^"+pattern+"$", stringValue)
-		return !matched
-	case query.In:
-		for _, inValue := range cond.InValues {
-			if fmt.Sprintf("%v", value) == inValue {
-				return true
-			}
-		}
-		return false
-	case query.NotIn:
-		for _, inValue := range cond.InValues {
-			if fmt.Sprintf("%v", value) == inValue {
-				return false
-			}
-		}
-		return true
+	case Eq:
+		return compareValuesRecursive(value, cond.Operand2, "eq")
+	case Ne:
+		return !compareValuesRecursive(value, cond.Operand2, "eq")
+	case Gt:
+		return compareValuesRecursive(value, cond.Operand2, "gt")
+	case Gte:
+		return compareValuesRecursive(value, cond.Operand2, "gte")
+	case Lt:
+		return compareValuesRecursive(value, cond.Operand2, "lt")
+	case Lte:
+		return compareValuesRecursive(value, cond.Operand2, "lte")
+	case Like:
+		return evaluateLikeRecursive(value, cond.Operand2)
+	case NotLike:
+		return !evaluateLikeRecursive(value, cond.Operand2)
+	case In:
+		return evaluateInRecursive(value, cond.InValues, 0)
+	case NotIn:
+		return !evaluateInRecursive(value, cond.InValues, 0)
 	default:
-		// Unknown operator, assume condition is not met
 		return false
 	}
+}
+
+// compareValuesRecursive recursively compares two values based on operation type
+func compareValuesRecursive(value any, operand2 string, operation string) bool {
+	// Try numeric comparison first
+	if numResult, ok := compareNumericRecursive(value, operand2, operation); ok {
+		return numResult
+	}
+
+	// Fall back to string comparison
+	return compareStringRecursive(fmt.Sprintf("%v", value), operand2, operation)
+}
+
+// compareNumericRecursive attempts numeric comparison recursively
+func compareNumericRecursive(value any, operand2 string, operation string) (bool, bool) {
+	// Try to convert value to float64
+	var numValue float64
+	var err error
+
+	switch v := value.(type) {
+	case int:
+		numValue = float64(v)
+	case int64:
+		numValue = float64(v)
+	case float32:
+		numValue = float64(v)
+	case float64:
+		numValue = v
+	case string:
+		numValue, err = strconv.ParseFloat(v, 64)
+		if err != nil {
+			return false, false // Not a number
+		}
+	default:
+		return false, false // Cannot convert to number
+	}
+
+	// Try to convert operand2 to float64
+	numOperand2, err := strconv.ParseFloat(operand2, 64)
+	if err != nil {
+		return false, false // operand2 is not a number
+	}
+
+	// Perform numeric comparison recursively
+	return performNumericComparisonRecursive(numValue, numOperand2, operation), true
+}
+
+// performNumericComparisonRecursive performs the actual numeric comparison
+func performNumericComparisonRecursive(val1, val2 float64, operation string) bool {
+	switch operation {
+	case "eq":
+		return val1 == val2
+	case "gt":
+		return val1 > val2
+	case "gte":
+		return val1 >= val2
+	case "lt":
+		return val1 < val2
+	case "lte":
+		return val1 <= val2
+	default:
+		return false
+	}
+}
+
+// compareStringRecursive performs string comparison recursively
+func compareStringRecursive(val1, val2 string, operation string) bool {
+	switch operation {
+	case "eq":
+		return val1 == val2
+	case "gt":
+		return val1 > val2
+	case "gte":
+		return val1 >= val2
+	case "lt":
+		return val1 < val2
+	case "lte":
+		return val1 <= val2
+	default:
+		return false
+	}
+}
+
+// evaluateLikeRecursive recursively evaluates LIKE pattern matching
+func evaluateLikeRecursive(value any, pattern string) bool {
+	stringValue, ok := value.(string)
+	if !ok {
+		return false
+	}
+
+	// Convert SQL LIKE pattern to regex recursively
+	regexPattern := convertLikePatternRecursive(pattern, 0, "")
+	matched, err := regexp.MatchString("^"+regexPattern+"$", stringValue)
+	if err != nil {
+		return false
+	}
+	return matched
+}
+
+// convertLikePatternRecursive recursively converts SQL LIKE pattern to regex
+func convertLikePatternRecursive(pattern string, index int, result string) string {
+	// Base case: we've processed the entire pattern
+	if index >= len(pattern) {
+		return result
+	}
+
+	currentChar := pattern[index]
+	switch currentChar {
+	case '%':
+		// % matches zero or more characters
+		return convertLikePatternRecursive(pattern, index+1, result+".*")
+	case '_':
+		// _ matches exactly one character
+		return convertLikePatternRecursive(pattern, index+1, result+".")
+	case '.', '*', '+', '?', '^', '$', '(', ')', '[', ']', '{', '}', '|', '\\':
+		// Escape special regex characters
+		return convertLikePatternRecursive(pattern, index+1, result+"\\"+string(currentChar))
+	default:
+		// Regular character
+		return convertLikePatternRecursive(pattern, index+1, result+string(currentChar))
+	}
+}
+
+// evaluateInRecursive recursively evaluates IN operator
+func evaluateInRecursive(value any, inValues []string, index int) bool {
+	// Base case: we've checked all values and found no match
+	if index >= len(inValues) {
+		return false
+	}
+
+	// Check if current value matches
+	if fmt.Sprintf("%v", value) == inValues[index] {
+		return true
+	}
+
+	// Recursively check the next value
+	return evaluateInRecursive(value, inValues, index+1)
 }
